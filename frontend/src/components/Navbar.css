@@ -1,0 +1,7 @@
+.navbar { position: sticky; z-index: 10; top: 0; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: 10px 32px; border-bottom: 1px solid var(--border); background: rgba(13, 17, 23, 0.94); backdrop-filter: blur(14px); }
+.navbar-context { min-width: 0; }
+.navbar-eyebrow { display: block; overflow: hidden; color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.11em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.navbar h1 { margin: 2px 0 0; overflow: hidden; color: var(--text-primary); font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.015em; text-overflow: ellipsis; white-space: nowrap; }
+.navbar-status { display: flex; align-items: center; gap: 9px; color: var(--text-secondary); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.1); animation: pulse 2s ease-in-out infinite; }
+@media (max-width: 767px) { .navbar { padding: 10px 16px; } .navbar-eyebrow { font-size: 8px; } .navbar h1 { font-size: 16px; } }

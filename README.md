@@ -1,114 +1,191 @@
 # TRI-NETRA
-**AI-Powered Financial & Telecom Dataset Analyzer (Bank, CDR, and IPDR Fusion)**
 
-**Problem Statement ID:** ERH26_PS_03
+**AI-powered financial fraud detection through Bank, CDR, and IPDR data fusion.**
 
-## Project Vision
-TRI-NETRA is an investigation-oriented financial and telecom data-fusion system designed to correlate:
-- **Bank transactions**
-- **Call Detail Records (CDR)**
-- **Internet Protocol Detail Records (IPDR)**
+Problem Statement ID: ERH26_PS_03
 
-The system helps investigators move from three large, heterogeneous datasets to a unified view of who transacted, who communicated, which device/subscriber identity was involved, what network activity occurred, and which events deserve investigation.
+---
 
-The complete system spans data ingestion, canonical normalization, entity resolution, cross-dataset correlation, unified timeline fusion, feature engineering, rules and machine learning, risk scoring, graph network analysis, and an investigation API for forensic STR reporting.
+## What it does
 
-## Core Architectural Principles
-- **Bank Transaction as the Risk Anchor:** One model observation equals one bank transaction. CDR and IPDR records provide contextual evidence around that transaction.
-- **Fusion Is More Than an ML Join:** The fusion engine acts as a reusable system component supplying a unified timeline, ML features, and graph representations.
-- **Rules and ML Work Together:** Known suspicious patterns are handled by a Rule Engine, while statistical and unusual behaviors are detected by a Machine Learning Engine.
+TRI-NETRA takes three data sources that investigators already have — bank transaction records, call detail records (CDR), and internet session records (IPDR) — and fuses them to detect suspicious financial activity. Every alert comes with an explainability score, the exact features that drove the prediction, and a ready-to-file Suspicious Transaction Report (STR).
 
-## Repository Structure
-```text
-TRI-NETRA/
-├── data/
-│   ├── clean/             # Clean baseline datasets (bank, cdr, ipdr)
-│   ├── anomalous/         # Datasets with controlled suspicious events injected
-│   └── ground_truth/      # Ground truth labels for validation and evaluation
-├── docs/                  # Detailed project documentation and specifications
-├── notebook/              # Jupyter notebooks for exploration and analysis
-│   └── output/            # Generated artefacts: scored_transactions.csv, graph_analytics.csv, etc.
-├── scripts/               # Authoritative pipeline scripts
-│   ├── generate_dataset.py   # Dataset builder (SEED=42, self-asserting)
-│   ├── features.py           # THE feature builder — imported by train + score
-│   ├── train.py              # Ablation + tuning; writes models/stage7_setC.joblib
-│   ├── score.py              # Risk scores, TreeSHAP reasons, rule engine
-│   └── graph_analytics.py    # Stage 9 graph analytics; writes graph_analytics.csv
-├── models/
-│   └── stage7_setC.joblib    # Persisted model bundle (XGBoost, 53 features)
-├── src/                   # removed (Task 3 Option B — merged into scripts/features.py)
-├── backend/               # FastAPI backend
-│   ├── main.py               # App entry point — registers all routers
-│   ├── pdf/                  # PDF parser endpoints
-│   ├── scoring/              # Investigation search + on-demand scoring (Stage 10)
-│   ├── graph/                # Graph analytics query endpoints (Stage 9)
-│   └── reports/              # STR forensic report export (Stage 12)
-├── tests/
-│   └── test_features.py      # 3 passing tests (causality, alignment, dtype)
-├── HANDOFF.md             # Authoritative state document — read before touching anything
-├── README.md              # This file
-└── requirements.txt       # Python dependencies
-```
+The system detects 15 fraud scenarios including amount velocity spikes, unusual call patterns before high-value transfers, new device appearances, location anomalies, and structured layering through mule accounts.
 
-## Stage-Wise Roadmap
+---
 
-| Stage | Component | Status |
-|---|---|---|
-| **1** | Dataset Preparation & Controlled Ground Truth | **DONE** |
-| **2** | Canonical Internal Data Model | DONE (merged into `scripts/features.py`) |
-| **3** | Entity Resolution | DONE (merged into `scripts/features.py`) |
-| **4** | Cross-Dataset Correlation Engine | DONE (merged into `scripts/features.py`) |
-| **5** | Unified Timeline & Fusion Layer | DONE (merged into `scripts/features.py`) |
-| **6** | Feature Engineering | **DONE** (`scripts/features.py` — 53 causal features, Sets A/B/C) |
-| **7** | Rules + ML Anomaly Detection | **DONE** (XGBoost Set C, PR-AUC 0.900, test precision 0.931) |
-| **8** | Risk Scoring & Explainability | **DONE** (`scripts/score.py` — 0–100 score, TreeSHAP, 5-rule engine) |
-| **9** | Graph / Network Analytics | **DONE** (`scripts/graph_analytics.py` — 100% mule recall in top-50) |
-| **10** | Investigation Search / Backend API | **DONE** (`backend/scoring/router.py`) |
-| **11** | Dashboard & Visualisation | Pending (wire frontend to existing API) |
-| **12** | Forensic / STR Reporting | **DONE** (`backend/reports/router.py`) |
-| **13** | Multi-Format & Provider-Specific Ingestion | Future |
-| **14** | Scalability, Testing & Production Hardening | Future |
-
-## Reproducing the pipeline
-
-```bash
-# from the repo root
-pip install -r requirements.txt
-
-python scripts/generate_dataset.py   # ~30 s — rewrites data/, self-asserts
-python scripts/train.py              # ~4 min — writes models/ + notebook/output/
-python scripts/score.py              # ~1 min — writes scored_transactions.csv
-python scripts/graph_analytics.py    # ~10 s — writes graph_analytics.csv
-python -m pytest tests/ -q           # 3 passed
-```
-
-Expected `generate_dataset.py` tail:
-```
-bank 20,900 | cdr 60,653 | ipdr 51,433 | anomalies 1,700 (8.13%)
-[OK] injected rows added=900 amount-modified=267
-```
-
-## Running the backend
-
-```bash
-pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload
-# → http://localhost:8000/docs   (Swagger UI)
-```
-
-## Key results (Set C XGBoost, test split)
+## Key results
 
 | Metric | Value |
 |---|---|
-| PR-AUC | **0.900** |
-| ROC-AUC | 0.964 |
-| Precision @ threshold | 0.931 |
-| Recall @ threshold | 0.781 |
-| P@100 | 0.99 |
-| AMOUNT_VELOCITY_SPIKE recall | **0.936** (was 0.500 before §3.4 fix) |
-| Graph: mule recall in top-50 nodes | **100%** |
+| PR-AUC (test split) | **0.900** |
+| Precision at threshold | **0.931** |
+| Recall at threshold | **0.781** |
+| AMOUNT_VELOCITY_SPIKE recall | **0.936** |
+| Mule account detection (top-50 nodes) | **100%** |
+| Fraud scenarios detected | **14 of 15** |
 
-## Detailed Documentation
-For detailed information about dataset structures, anomaly generation, and specific implementation requirements per stage, see [Stage-Wise Documentation](docs/TRI_NETRA_STAGE_WISE_DOCUMENTATION.md).
+---
 
-For the full engineering history, known issues, and task list, see [HANDOFF.md](HANDOFF.md).
+## Project structure
+
+```
+TRI-NETRA/
+├── backend/                  Python pipeline + FastAPI
+│   ├── main.py               API entry point
+│   ├── scripts/              ML pipeline scripts
+│   │   ├── generate_dataset.py
+│   │   ├── features.py       Single feature implementation (53 features)
+│   │   ├── train.py          Model training and ablation
+│   │   ├── score.py          Risk scoring + rule engine
+│   │   └── graph_analytics.py
+│   ├── models/               Trained model bundle (.joblib)
+│   ├── notebook/output/      Generated CSVs (scores, graph, STR)
+│   ├── pdf-parser/           Bank statement / CDR / IPDR PDF parser
+│   ├── pdf/                  PDF upload API module
+│   ├── scoring/              Investigation search API
+│   ├── graph/                Graph analytics API
+│   ├── reports/              STR report export API
+│   └── tests/                3 regression tests
+├── frontend/                 React + Vite investigation dashboard
+│   └── src/
+│       ├── pages/            Dashboard, Alerts, Graph, Reports, PDF Parser
+│       └── components/       Shared UI components
+├── data/                     Datasets (git-tracked)
+│   ├── clean/                Baseline (20k bank, 60k CDR, 50k IPDR)
+│   ├── anomalous/            Baseline + 1,700 injected anomalies
+│   └── ground_truth/         Labels + correlation ground truth
+└── docs/                     Stage-wise technical documentation
+```
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- Python 3.10+
+- Node.js 18+
+
+### 1. Install dependencies
+
+```bash
+# Backend
+cd backend
+pip install fastapi uvicorn pandas numpy scikit-learn xgboost joblib
+pip install pdfplumber rapidfuzz sentence-transformers python-multipart
+
+# Frontend
+cd ../frontend
+npm install
+```
+
+### 2. Run the ML pipeline (one time)
+
+```bash
+cd backend
+
+# Build the dataset
+python scripts/generate_dataset.py
+
+# Train the model (~4 min)
+python scripts/train.py
+
+# Score all transactions
+python scripts/score.py
+
+# Build the graph
+python scripts/graph_analytics.py
+```
+
+### 3. Start the application
+
+Open two terminals:
+
+**Terminal 1 — Backend**
+```bash
+cd backend
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Terminal 2 — Frontend**
+```bash
+cd frontend
+npm run dev
+```
+
+| Service | URL |
+|---|---|
+| Investigation Dashboard | http://localhost:3000 |
+| API + Swagger UI | http://localhost:8000/docs |
+
+---
+
+## API overview
+
+The backend exposes 14 endpoints across 4 modules.
+
+**Scoring** — search and filter all 20,900 scored transactions, drill into individual customers, score a new transaction on demand.
+
+**Graph** — query the financial transfer graph (858 nodes, 20,900 edges), list mule accounts by suspicion score, inspect node-level evidence.
+
+**Reports** — generate structured STR reports per customer with auto-written narrative, detected scenario types, and graph context. Export as JSON.
+
+**PDF Parser** — upload any bank statement, CDR, or IPDR PDF. The parser auto-detects the document type, extracts all records into the canonical schema, and returns structured JSON. Supports Axis Bank, HDFC, SBI, ICICI, and others.
+
+Full route documentation: **http://localhost:8000/docs**
+
+---
+
+## How the model works
+
+Each bank transaction is one observation. CDR and IPDR records provide context around it — they are never observations themselves.
+
+The pipeline builds 53 causal features across three sets:
+
+- **Set A (25 features)** — bank only: amount velocity, customer-relative spike, new beneficiary, hour rarity
+- **Set B (+17 features)** — adds CDR: call patterns before transaction, device novelty, location mismatch
+- **Set C (+11 features)** — adds IPDR: session bursts, IP novelty, IMSI/IMEI pair changes
+
+XGBoost is trained on Set C with a temporal split (60% train / 15% val / 25% test). The threshold is tuned on the validation set. Every flagged transaction carries exact TreeSHAP reason codes.
+
+A rule engine runs independently of the ML model and flags signals the ranker cannot rank reliably on its own (odd-hour transactions, telecom bursts, rapid succession, etc.).
+
+---
+
+## Run the tests
+
+```bash
+cd backend
+python -m pytest tests/ -q
+```
+
+3 tests covering causality (no future data leakage), velocity count alignment, and phone number dtype preservation.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| ML | XGBoost, scikit-learn, pandas, NumPy |
+| Explainability | TreeSHAP (via XGBoost's `pred_contribs`) |
+| Graph analytics | Custom power-iteration PageRank, no external graph library |
+| Backend | FastAPI, Uvicorn |
+| PDF parsing | pdfplumber, RapidFuzz, SentenceTransformers |
+| Frontend | React 18, Vite 5, Recharts, React Router v6 |
+| Model persistence | joblib |
+
+---
+
+## Detailed documentation
+
+- [`HANDOFF.md`](HANDOFF.md) — full engineering history, verified numbers, known issues, design decisions
+- [`CODEBASE_GUIDE.md`](CODEBASE_GUIDE.md) — complete reference for every file, feature, API route, and design decision
+- [`docs/TRI_NETRA_STAGE_WISE_DOCUMENTATION.md`](docs/TRI_NETRA_STAGE_WISE_DOCUMENTATION.md) — stage specifications
+
+---
+
+## License
+
+[MIT](LICENSE)

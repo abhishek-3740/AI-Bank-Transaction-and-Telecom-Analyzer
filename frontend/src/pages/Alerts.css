@@ -1,0 +1,21 @@
+.alerts-filter-panel { margin-bottom: 16px; padding: 16px; }
+.alerts-filter-grid { display: grid; grid-template-columns: minmax(170px, 1.1fr) repeat(3, minmax(135px, 1fr)) auto; align-items: end; gap: 12px; }
+.filter-field { min-width: 0; }
+.filter-field .form-label { display: flex; align-items: center; justify-content: space-between; }
+.filter-field .form-label strong { color: var(--accent-blue); font-family: var(--font-mono); font-weight: 500; }
+.filter-range-field input { width: 100%; accent-color: var(--accent-blue); }
+.alerts-filter-actions { display: flex; gap: 8px; }
+.alerts-filter-actions .button { white-space: nowrap; }
+.alerts-results-panel { overflow: hidden; }
+.alerts-results-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 18px 20px 14px; }
+.results-summary { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
+.results-summary strong { color: var(--text-secondary); font-family: var(--font-mono); font-weight: 500; }
+.page-size-field { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }
+.page-size-field .form-control { width: 78px; }
+.table-sort-button { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: inherit; font-weight: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; }
+.table-sort-button:hover { color: var(--accent-blue); }
+.pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
+.pagination-bar strong { color: var(--text-primary); font-family: var(--font-mono); font-weight: 500; }
+.pagination-button { min-height: 32px; padding: 0 10px; font-size: 11px; }
+@media (max-width: 1050px) { .alerts-filter-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); } .alerts-filter-actions { grid-column: span 2; justify-content: flex-end; } }
+@media (max-width: 560px) { .alerts-filter-grid { grid-template-columns: 1fr; } .alerts-filter-actions { grid-column: auto; } .alerts-results-toolbar { align-items: flex-start; flex-direction: column; } .pagination-bar { justify-content: space-between; padding: 14px; } }

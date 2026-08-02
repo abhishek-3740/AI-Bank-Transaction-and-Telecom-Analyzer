@@ -1,0 +1,14 @@
+# Frontend-specific ignores (root .gitignore covers the rest)
+
+# Build output
+dist/
+.vite/
+
+# Local env overrides
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Storybook (if added later)
+storybook-static/

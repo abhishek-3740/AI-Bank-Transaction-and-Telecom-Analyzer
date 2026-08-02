@@ -1,0 +1,10 @@
+.rules-badge-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 270px; }
+.rule-badge { display: inline-flex; align-items: center; min-height: 19px; padding: 2px 5px; border: 1px solid currentColor; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.02em; line-height: 1.1; white-space: nowrap; }
+.rule-blue { border-color: rgba(88, 166, 255, 0.45); background: var(--blue-soft); color: var(--accent-blue); }
+.rule-orange { border-color: rgba(240, 136, 62, 0.45); background: var(--high-soft); color: var(--accent-orange); }
+.rule-red { border-color: rgba(248, 81, 73, 0.45); background: var(--critical-soft); color: var(--accent-red); }
+.rule-yellow { border-color: rgba(210, 153, 34, 0.45); background: var(--medium-soft); color: var(--accent-yellow); }
+.rule-purple { border-color: rgba(188, 140, 255, 0.45); background: var(--purple-soft); color: var(--accent-purple); }
+.rule-default { border-color: rgba(139, 148, 158, 0.45); background: rgba(139, 148, 158, 0.08); color: var(--text-secondary); }
+.rule-more { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.rules-empty { color: var(--text-muted); }

@@ -1,16 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import svgr from 'vite-plugin-svgr'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), svgr()],
   server: {
     port: 3000,
     proxy: {
-      // Proxy all /api requests to the FastAPI backend
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-      }
-    }
-  }
+      },
+    },
+  },
 })
