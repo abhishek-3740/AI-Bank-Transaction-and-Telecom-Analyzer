@@ -20,6 +20,9 @@ from fastapi import FastAPI
 from pdf.config import PROJECT_NAME, VERSION
 from pdf.logging_config import get_logger
 from pdf.router import router as pdf_router
+from scoring.router import router as scoring_router
+from graph.router import router as graph_router
+from reports.router import router as reports_router
 
 # Configure root logging
 logging.basicConfig(
@@ -32,11 +35,17 @@ logger = get_logger(__name__)
 
 app = FastAPI(
     title=PROJECT_NAME,
-    version=VERSION,
-    description="Backend API for parsing Bank, CDR, and IPDR PDFs.",
+    version="2.0.0",
+    description=(
+        "TRI-NETRA backend API — PDF parsing, investigation search, "
+        "risk scoring, graph analytics, and STR reporting."
+    ),
 )
 
 app.include_router(pdf_router)
+app.include_router(scoring_router)
+app.include_router(graph_router)
+app.include_router(reports_router)
 
 
 @app.get("/")
@@ -44,8 +53,24 @@ def root() -> dict[str, str]:
     """Root endpoint."""
     return {
         "name": PROJECT_NAME,
-        "version": VERSION,
+        "version": "2.0.0",
         "status": "running",
+        "endpoints": (
+            "/api/v1/pdf/parse, "
+            "/api/v1/scoring/alerts, "
+            "/api/v1/scoring/transactions, "
+            "/api/v1/scoring/customer/{id}, "
+            "/api/v1/scoring/stats, "
+            "/api/v1/scoring/score, "
+            "/api/v1/graph/summary, "
+            "/api/v1/graph/nodes, "
+            "/api/v1/graph/node/{id}, "
+            "/api/v1/graph/mules, "
+            "/api/v1/graph/edges, "
+            "/api/v1/reports/str/{customer_id}, "
+            "/api/v1/reports/str/batch, "
+            "/api/v1/reports/summary"
+        ),
     }
 
 

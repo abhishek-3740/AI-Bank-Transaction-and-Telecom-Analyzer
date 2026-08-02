@@ -62,11 +62,51 @@ cols = np.array(X.columns)
 reasons = [[f"{cols[j]} ({contrib[i, j]:+.2f})" if contrib[i, j] > 0 else ""
             for j in top3[i]] for i in range(len(X))]
 
-# Rule engine. Deliberately minimal: ODD_HOUR is here because a lone odd-hour
-# transaction is provably unrankable by the ML model (HANDOFF.md 3.1) -- 855
-# night transactions, only 37 anomalous. It belongs in rules, not the ranker.
+# ------------------------------------------------------------------ Rule engine
+# Rules fire on raw transaction/feature signals that the ML model cannot rank
+# reliably on their own (HANDOFF.md §3.1).  Each rule is a boolean mask; the
+# final column joins the names of all firing rules with '|'.
+#
+# Rules implemented:
+#   ODD_HOUR           – transaction between 00:00–05:59 for a customer whose
+#                        baseline night activity is near zero.  ML cannot rank
+#                        this because 855 night txns / only 37 anomalous.
+#   HIGH_AMOUNT_ANOMALY – transaction amount > 5× the customer's median.
+#                        Catches CUSTOMER_RELATIVE_AMOUNT_SPIKE when the ML
+#                        model is uncertain (low CDR/IPDR context).
+#   RAPID_SUCCESSION   – ≥3 transactions in the previous 10 minutes.
+#   NEW_BENEFICIARY_FLAG – first-ever transfer to this receiver account.
+#   TELECOM_BURST      – ≥3 CDR calls in the 30 min window before the txn.
+
 hour = X["transaction_hour"].values
-rules = np.where((hour >= 0) & (hour <= 5), "ODD_HOUR", "")
+r_odd_hour = (hour >= 0) & (hour <= 5)
+
+amount_ratio = X["amount_vs_customer_median"].fillna(0).values
+r_high_amount = amount_ratio > 5.0
+
+rapid = X["txn_count_previous_10m"].values
+r_rapid = rapid >= 3
+
+# receiver_seen_before == 0 means this is the first time this sender sent to
+# this receiver (the feature is 1 when seen before, 0 when novel).
+r_new_ben = X["receiver_seen_before"].values == 0
+
+calls_30m = X["calls_previous_30m"].values
+r_telecom = calls_30m >= 3
+
+# Build the combined rule string per transaction
+rule_parts = [
+    ("ODD_HOUR",            r_odd_hour),
+    ("HIGH_AMOUNT_ANOMALY", r_high_amount),
+    ("RAPID_SUCCESSION",    r_rapid),
+    ("NEW_BENEFICIARY_FLAG",r_new_ben),
+    ("TELECOM_BURST",       r_telecom),
+]
+rules_fired_list = []
+for masks in zip(*[m for _, m in rule_parts]):
+    names = [name for (name, _), fired in zip(rule_parts, masks) if fired]
+    rules_fired_list.append("|".join(names))
+rules = np.array(rules_fired_list)
 
 rep = pd.DataFrame({
     "Transaction_ID": b.Transaction_ID, "Date": b.Date, "Timestamp": b.Timestamp,
@@ -93,8 +133,12 @@ a_te = rep[te & (rep.risk_score >= 70)]
 if len(a_te):
     print(f"  alerts={len(a_te)}  precision={a_te.is_suspicious_gt.mean():.3f}  "
           f"recall={a_te.is_suspicious_gt.sum() / max(rep[te].is_suspicious_gt.sum(), 1):.3f}")
-print(f"\nrules fired: {(rep.rules_fired != '').sum():,} ODD_HOUR "
+print(f"\nrules fired: {(rep.rules_fired != '').sum():,} transactions carry at least one rule "
       f"({rep[rep.rules_fired != ''].is_suspicious_gt.sum()} of them true anomalies)")
+for rule_name, mask in rule_parts:
+    n = int(np.array([rule_name in r for r in rules_fired_list]).sum())
+    tp = int(b.y.values[np.array([rule_name in r for r in rules_fired_list])].sum())
+    print(f"  {rule_name:<22s}  fired={n:,}  true_positives={tp}")
 print("\ntop 10 alerts (held-out rows):")
 print(rep[te].head(10)[["Transaction_ID", "Transaction_Amount", "risk_score", "risk_band",
                         "reason_1", "is_suspicious_gt"]].to_string(index=False))

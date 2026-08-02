@@ -306,12 +306,14 @@ def add_ipdr(c, when, imei=None, cell=None, dur_s=None):
 
 def clone_txn(idx, when, amt):
     r = ban.loc[idx].to_dict()
-    r["Transaction_ID"] = ("ATM" if r["Transaction_Mode"] == "ATM" else "TXN") + \
-                          when.strftime("%y%m%d") + codes(1, 6)[0]
+    tid = ("ATM" if r["Transaction_Mode"] == "ATM" else "TXN") + \
+          when.strftime("%y%m%d") + codes(1, 6)[0]
+    r["Transaction_ID"] = tid
     r["Date"], r["Timestamp"] = when.strftime("%Y-%m-%d"), when.strftime("%H:%M:%S")
     r["Txn_Ref_Number"], r["Transaction_Amount"] = codes(1, 12)[0], round(float(amt), 2)
     r["_dt"] = when
     new_bank.append(r)
+    return tid  # caller must collect this to emit a GT row per clone
 
 
 def set_mule(idx):
@@ -352,13 +354,31 @@ for a_i, (idx, scen, diff) in enumerate(zip(anchors, scen_of, diff_of)):
     elif scen in ("AMOUNT_VELOCITY_SPIKE", "TRANSACTION_BURST"):
         k = int(rng.integers(lerp(s, 4, 9), lerp(s, 6, 14)))
         hot = scen == "AMOUNT_VELOCITY_SPIKE"
+        clone_ids = []
         for j in range(k):
-            clone_txn(idx, t - timedelta(minutes=int(rng.integers(1, 58))),
-                      med * rng.uniform(3, 8) if hot else np.exp(rng.normal(cust.mu.values[c], cust.sigma.values[c])))
+            cid_clone = clone_txn(idx, t - timedelta(minutes=int(rng.integers(1, 58))),
+                                  med * rng.uniform(3, 8) if hot else np.exp(rng.normal(cust.mu.values[c], cust.sigma.values[c])))
+            clone_ids.append(cid_clone)
         if hot:
             ban.at[idx, "Transaction_Amount"] = round(med * rng.uniform(3, 8), 2)
             f["Amount"] = 1
         f["Bank"] = f["Velocity"] = 1
+        # Each sibling is part of the same suspicious episode; label all positive.
+        # HANDOFF.md §3.4: only the anchor was in GT before — that caused near-
+        # identical feature vectors with opposite labels, suppressing velocity features.
+        scope_clone = "BANK_ONLY"
+        for clone_j, clone_tid in enumerate(clone_ids):
+            gt.append({
+                "Anomaly_ID": f"ANOM{a_i:06d}C{clone_j:02d}",
+                "Customer_ID": cust.cid.values[c],
+                "Transaction_ID": clone_tid,
+                "CDR_IDs": "", "IPDR_IDs": "",
+                "Scenario_Type": scen, "Difficulty": diff, "Source_Scope": scope_clone,
+                **{f"{kk}_Anomaly": vv for kk, vv in f.items()},
+                "Injected_Signals": ";".join(kk for kk, vv in f.items()
+                                             if vv and kk not in ("Bank", "CDR", "IPDR")),
+                "Is_Suspicious": 1,
+            })
 
     elif scen in ("NEW_BENEFICIARY", "AMOUNT_PLUS_NEW_BENEFICIARY", "CALL_THEN_NEW_BENEFICIARY"):
         set_mule(idx)
