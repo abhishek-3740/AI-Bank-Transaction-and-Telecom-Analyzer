@@ -30,9 +30,9 @@ import pandas as pd
 from pathlib import Path
 from collections import defaultdict
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "notebook" / "output"
-DATA = ROOT / "data"
+ROOT = Path(__file__).resolve().parents[1]   # backend/
+OUT  = ROOT / "notebook" / "output"
+DATA = ROOT.parent / "data"                  # data/ is at repo root
 
 SCORED_CSV = OUT / "scored_transactions.csv"
 BANK_CSV   = DATA / "anomalous" / "bank_anomaly.csv"

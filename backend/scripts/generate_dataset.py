@@ -28,8 +28,8 @@ N_CDR = 60_000
 N_IPDR = 50_000
 N_ANOMALY = 800
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data"
+ROOT = Path(__file__).resolve().parents[1]   # backend/
+OUT  = ROOT.parent / "data"                  # data/ is at repo root
 
 # Daytime-weighted transaction/call clock. Hours 1-4 hold ~1.9% of activity, so
 # an odd-hour injection is a real outlier (it was 24.9% before).

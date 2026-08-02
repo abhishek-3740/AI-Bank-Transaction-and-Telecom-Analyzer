@@ -122,20 +122,44 @@ def _normalize_text(text: str) -> str:
 def _find_bank_name(text: str, text_upper: str) -> Optional[str]:
     """
     Finds a known bank name in the text using word boundaries.
-    Returns None if no known bank is found to prevent branch names 
-    from being misclassified as bank names.
+    Uses IFSC code as the authoritative source when present, because the
+    transaction particulars often contain counterparty bank names (e.g. "Yes Bank"
+    in a UPI transfer) that must NOT be reported as the sender's bank.
+    Returns None if no known bank is found.
     """
+    # --- Priority 1: Derive from IFSC prefix (most reliable) ---
+    ifsc_match = re.search(r'(?:IFSC|IFSC\s*Code)\s*[:.]?\s*([A-Za-z]{4}0[A-Za-z0-9]{6})',
+                           text, re.IGNORECASE)
+    if ifsc_match:
+        prefix = ifsc_match.group(1)[:4].upper()
+        ifsc_to_bank = {
+            "UTIB": "Axis Bank",       "SBIN": "State Bank of India",
+            "HDFC": "HDFC Bank",       "ICIC": "ICICI Bank",
+            "KKBK": "Kotak Mahindra Bank", "PUNB": "Punjab National Bank",
+            "BARB": "Bank of Baroda",  "CNRB": "Canara Bank",
+            "UBIN": "Union Bank of India", "IDFB": "IDFC First Bank",
+            "YESB": "Yes Bank",        "BKID": "Bank of India",
+            "INDB": "IndusInd Bank",   "RATN": "RBL Bank",
+        }
+        bank = ifsc_to_bank.get(prefix)
+        if bank:
+            return bank
+
+    # --- Priority 2: Explicit bank name in header text only (first 800 chars) ---
+    # Restrict search to the document header to avoid picking up counterparty
+    # bank names embedded in transaction particulars rows.
+    header_text = text_upper[:800]
     found_banks = {}
     for bank in _KNOWN_BANKS:
         pattern = r'\b' + re.escape(bank) + r'\b'
-        matches = list(re.finditer(pattern, text_upper))
+        matches = list(re.finditer(pattern, header_text))
         if matches:
             found_banks[bank] = len(matches)
-    
+
     if found_banks:
         best_bank = max(found_banks, key=found_banks.get)
         return _BANK_NAME_NORMALIZATION.get(best_bank, best_bank.title())
-    
+
     return None
 
 def _detect_provider_from_text(text_upper: str) -> Optional[str]:
@@ -152,25 +176,21 @@ def _find_account_number(text: str) -> Optional[str]:
     """Extracts account number from statement text using multiple strategies."""
     # Strategy 1: Label-based extraction with flexible spacing
     label_patterns = [
-        r'(?i)(?:a/c|account|acct|sb|savings?|current)\s*(?:a/c)?\s*(?:no|number|#)?\s*[:.]?\s*([X\d][A-Za-z0-9X\s\-]{5,24})',
-        r'(?i)account\s*(?:number|no\.?|#)\s*[:.]?\s*([X\d][A-Za-z0-9X\s\-]{5,24})',
+        r'(?i)(?:a/c|account|acct|sb|savings?|current)\s*(?:a/c)?\s*(?:no|number|#)?\s*[:.]?\s*(\d{10,20})\b',
+        r'(?i)account\s*(?:number|no\.?|#)\s*[:.]?\s*(\d{10,20})\b',
     ]
     
     for pattern in label_patterns:
         match = re.search(pattern, text)
         if match:
-            candidate = re.sub(r'\s+', '', match.group(1)).strip()
-            # Filter out dates
-            if re.match(r'^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$', candidate):
-                continue
-            # Must contain digits and be reasonable length
-            if len(candidate) >= 6 and any(c.isdigit() for c in candidate):
+            candidate = match.group(1).strip()
+            if len(candidate) >= 6:
                 return candidate
     
     # Strategy 2: Contextual patterns for masked/unmasked numbers
     context_patterns = [
-        r'(?i)account\s*(?:number|no)?\s*[:.]?\s*([X\d]{4,20})',
-        r'(?i)a/c\s*(?:no)?\s*[:.]?\s*([X\d]{4,20})',
+        r'(?i)account\s*(?:number|no)?\s*[:.]?\s*([X\d]{4,20})\b',
+        r'(?i)a/c\s*(?:no)?\s*[:.]?\s*([X\d]{4,20})\b',
     ]
     
     for pattern in context_patterns:
@@ -647,7 +667,7 @@ def _parse_transaction_particulars(df: pd.DataFrame) -> pd.DataFrame:
         s = str(text).strip()
         parts = [p.strip() for p in s.split('/') if p.strip()]
         
-        mode = pd.NA
+        mode = None
         txn_id = pd.NA
         beneficiary = pd.NA
         bank = pd.NA
@@ -673,7 +693,7 @@ def _parse_transaction_particulars(df: pd.DataFrame) -> pd.DataFrame:
         if mode == 'IMPS' and len(parts) >= 2:
             mode = f"IMPS_{parts[1]}" if parts[1] in ('P2A', 'P2P', 'P2M') else 'IMPS'
         
-        if mode in ['POS', 'EDC'] and len(parts) >= 2:
+        if mode in ('POS', 'EDC') and len(parts) >= 2:
             txn_id = parts[-1] if parts[-1].isdigit() else pd.NA
         
         if mode == 'IMPS' and len(parts) >= 3:
@@ -688,7 +708,7 @@ def _parse_transaction_particulars(df: pd.DataFrame) -> pd.DataFrame:
                 beneficiary = parts[3]
         
         # If no mode detected, keep original as mode
-        if pd.isna(mode):
+        if mode is None:
             mode = s
         
         return pd.Series([mode, txn_id, beneficiary, bank])

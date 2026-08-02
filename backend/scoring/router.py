@@ -34,9 +34,10 @@ from .models import (
 
 router = APIRouter(prefix="/api/v1/scoring", tags=["scoring"])
 
-# Resolve paths relative to the repo root (two levels above backend/)
-_BACKEND_DIR = Path(__file__).resolve().parents[2]
-_SCORED_CSV = _BACKEND_DIR / "notebook" / "output" / "scored_transactions.csv"
+# backend/scoring/router.py  →  parents[1]=backend/  parents[2]=repo root
+_BACKEND_DIR = Path(__file__).resolve().parents[1]      # backend/
+_REPO_ROOT   = Path(__file__).resolve().parents[2]      # TRI-NETRA/
+_SCORED_CSV  = _BACKEND_DIR / "notebook" / "output" / "scored_transactions.csv"
 _BUNDLE_PATH = _BACKEND_DIR / "models" / "stage7_setC.joblib"
 _SCRIPTS_DIR = _BACKEND_DIR / "scripts"
 

@@ -77,7 +77,8 @@ BANK_ALIASES = {
         "Amount(Rs.)", "Amt.", "Txn Amt.", "Amount (INR)", "Amt(INR)",
         "Amt (INR)", "Amount INR", "Amount in INR", "INR Amount",
         "Rs.", "Rs", "Rupees", "Amount (Rs)", "Amt (Rs)", "Amt(Rs)",
-        "Withdrawal", "Deposit", "Debit", "Credit", "Dr Amount", "Cr Amount"
+        "Withdrawal", "Deposit", "Debit", "Credit", "Dr Amount", "Cr Amount",
+        "Transaction Amount Merged", "Amount Merged", "Merged Amount"
     ],
     "Sender_Account_Number": [
         "Account No", "A/C No", "Sender A/C", "Account Number", "Account",
@@ -438,8 +439,11 @@ def map_columns(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
             logger.warning(f"Unmapped column '{col}' could not be matched to any canonical field.")
             
     df_mapped = df.rename(columns=mapping)
-    columns_to_keep = [col for col in df_mapped.columns if col in SCHEMAS[dataset_type]]
-    return df_mapped[columns_to_keep]
+    schema_cols = SCHEMAS[dataset_type]
+    # Keep canonical cols AND Transaction_Amount_Merged if present (used by fallback)
+    keep = [col for col in df_mapped.columns
+            if col in schema_cols or col == "Transaction_Amount_Merged"]
+    return df_mapped[keep]
 
 def ensure_schema(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
     """Ensures exact canonical schema layout. Fills missing with pd.NA."""

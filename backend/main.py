@@ -4,14 +4,15 @@ import logging
 import sys
 from pathlib import Path
 
-# Ensure the backend directory is on sys.path so that `pdf` resolves correctly
-_backend_dir = Path(__file__).resolve().parent
+# Ensure the backend directory is on sys.path so that `pdf`, `scoring`, `graph`, `reports` resolve
+_backend_dir = Path(__file__).resolve().parent          # → backend/
+_repo_root   = _backend_dir.parent                      # → TRI-NETRA/ (repo root)
+
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-# Ensure pdf-parser/ is on sys.path so that `from pdf_parser import parse_pdf` works
-_project_root = _backend_dir.parent
-_pdf_parser_path = _project_root / "pdf-parser"
+# pdf-parser/ lives inside backend/
+_pdf_parser_path = _backend_dir / "pdf-parser"
 if str(_pdf_parser_path) not in sys.path:
     sys.path.insert(0, str(_pdf_parser_path))
 

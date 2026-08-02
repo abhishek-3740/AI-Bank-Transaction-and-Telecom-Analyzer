@@ -25,12 +25,14 @@ from .models import STRReport, STRTransaction
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
-_ROOT = Path(__file__).resolve().parents[2]
-_OUT = _ROOT / "notebook" / "output"
+# backend/reports/router.py: parents[1]=backend/  parents[2]=repo root
+_BACKEND = Path(__file__).resolve().parents[1]   # backend/
+_REPO    = Path(__file__).resolve().parents[2]   # TRI-NETRA/ (data/ lives here)
+_OUT     = _BACKEND / "notebook" / "output"
 
-_SCORED_CSV  = _OUT / "scored_transactions.csv"
-_GRAPH_CSV   = _OUT / "graph_analytics.csv"
-_GT_CSV      = _ROOT / "data" / "ground_truth" / "anomaly_ground_truth.csv"
+_SCORED_CSV = _OUT / "scored_transactions.csv"
+_GRAPH_CSV  = _OUT / "graph_analytics.csv"
+_GT_CSV     = _REPO / "data" / "ground_truth" / "anomaly_ground_truth.csv"
 
 _scored_df: Optional[pd.DataFrame] = None
 _graph_df:  Optional[pd.DataFrame] = None
@@ -179,16 +181,6 @@ def _build_str_report(customer_id: str, min_risk: float,
     )
 
 
-@router.get("/str/{customer_id}", response_model=STRReport)
-def generate_str(
-    customer_id: str,
-    min_risk: float = Query(70.0, ge=0, le=100),
-    officer: str = Query("System", description="Name of the reporting officer"),
-) -> STRReport:
-    """Generate a Suspicious Transaction Report for a single customer."""
-    return _build_str_report(customer_id, min_risk, officer)
-
-
 @router.get("/str/batch", response_model=list[dict])
 def batch_str_summary(
     min_risk: float = Query(70.0, ge=0, le=100),
@@ -212,6 +204,16 @@ def batch_str_summary(
            .sort_values("max_risk", ascending=False)
            .head(top_n))
     return agg.rename(columns={"Sender_Customer_ID": "customer_id"}).to_dict(orient="records")
+
+
+@router.get("/str/{customer_id}", response_model=STRReport)
+def generate_str(
+    customer_id: str,
+    min_risk: float = Query(70.0, ge=0, le=100),
+    officer: str = Query("System", description="Name of the reporting officer"),
+) -> STRReport:
+    """Generate a Suspicious Transaction Report for a single customer."""
+    return _build_str_report(customer_id, min_risk, officer)
 
 
 @router.get("/summary")

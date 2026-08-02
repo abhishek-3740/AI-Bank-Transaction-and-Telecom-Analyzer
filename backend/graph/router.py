@@ -23,8 +23,9 @@ from .models import GraphEdge, GraphNode, GraphSummary
 
 router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
 
-_ROOT = Path(__file__).resolve().parents[2]
-_OUT = _ROOT / "notebook" / "output"
+# backend/graph/router.py: parents[1] = backend/
+_BACKEND   = Path(__file__).resolve().parents[1]
+_OUT       = _BACKEND / "notebook" / "output"
 _NODES_CSV = _OUT / "graph_analytics.csv"
 _EDGES_CSV = _OUT / "graph_edges.csv"
 

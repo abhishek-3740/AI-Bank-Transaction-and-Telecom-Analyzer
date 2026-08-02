@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-D = ROOT / "data"
+ROOT = Path(__file__).resolve().parents[1]   # backend/scripts/ → backend/
+D    = ROOT.parent / "data"                  # data/ is at repo root, not inside backend/
 DAY = 86400
 
 # Read every join key as str: pandas parses "+919812345678" as int64 otherwise,
