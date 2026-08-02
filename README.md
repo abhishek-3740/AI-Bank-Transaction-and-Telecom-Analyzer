@@ -98,6 +98,12 @@ python scripts/score.py
 python scripts/graph_analytics.py
 ```
 
+Steps 3 and 4 populate the dashboard with the synthetic demo dataset. They are not
+required to use the app with your own documents — uploading a PDF re-scores and
+rebuilds the dashboard on its own (see [Uploading a PDF](#uploading-a-pdf-populates-the-dashboard)).
+The trained model bundle (step 2) is required either way; it ships committed at
+`backend/models/stage7_setC.joblib`.
+
 ### 3. Start the application
 
 Open two terminals:
@@ -132,6 +138,27 @@ The backend exposes 14 endpoints across 4 modules.
 **Reports** — generate structured STR reports per customer with auto-written narrative, detected scenario types, and graph context. Export as JSON.
 
 **PDF Parser** — upload any bank statement, CDR, or IPDR PDF. The parser auto-detects the document type, extracts all records into the canonical schema, and returns structured JSON. Supports Axis Bank, HDFC, SBI, ICICI, and others.
+
+### Uploading a PDF populates the dashboard
+
+`POST /api/v1/pdf/parse` does not just return rows. Each upload is appended to an
+evidence corpus under `backend/notebook/output/uploads/`, re-scored with the same
+model and rule engine the batch pipeline uses, and the graph is rebuilt — so the
+Dashboard, Alert Queue, Graph and STR pages immediately reflect what you uploaded.
+The response carries an `ingest` object reporting how many transactions were
+scored, how many alerted, and what had to be inferred from an incomplete statement.
+
+Two caveats worth knowing:
+
+- **Uploads replace the demo dataset** in the dashboard CSVs. Restore the 20,900-row
+  baseline any time with `python scripts/score.py && python scripts/graph_analytics.py`.
+  Clear the corpus with `rm -r backend/notebook/output/uploads/`.
+- **Statements carry less signal than the training data.** Printed statements rarely
+  include a per-transaction clock time, a beneficiary account number, or the sender's
+  phone number. Timestamps default to 12:00:00, beneficiaries are inferred from the
+  narration text, and without a matching CDR/IPDR upload the telecom features are
+  unavailable — so scores on uploaded statements are weaker than the headline
+  precision/recall figures, which are measured on the fully-populated dataset.
 
 Full route documentation: **http://localhost:8000/docs**
 

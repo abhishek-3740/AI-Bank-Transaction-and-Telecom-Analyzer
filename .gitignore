@@ -111,6 +111,10 @@ ocr_prep_debug/
 bank_parsed.csv
 *_parsed.csv
 
+# Uploaded case evidence — real statements parsed through the API. Never commit
+# these; they are per-investigation data, not part of the project.
+backend/notebook/output/uploads/
+
 # HuggingFace model cache (auto-downloaded, no need to commit)
 .cache/huggingface/
 

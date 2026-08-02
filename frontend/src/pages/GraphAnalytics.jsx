@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis, CartesianGrid } from 'recharts'
 import { getGraphNode, getGraphNodes, getGraphSummary } from '../api/client'
 import LoadingSpinner from '../components/LoadingSpinner'
+import PipelineEmpty from '../components/PipelineEmpty'
 import RiskBadge from '../components/RiskBadge'
 import StatCard from '../components/StatCard'
 import { formatCurrency, formatRatio, formatRisk } from '../utils/formatters'
@@ -28,6 +29,7 @@ export default function GraphAnalytics() {
   const [loading, setLoading] = useState(true)
   const [nodesLoading, setNodesLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pipelineEmpty, setPipelineEmpty] = useState(false)
   const [mulesOnly, setMulesOnly] = useState(false)
   const [selectedNode, setSelectedNode] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -42,7 +44,11 @@ export default function GraphAnalytics() {
         setSummary(data)
         setNodes(data?.top_suspicious_nodes || [])
       })
-      .catch((requestError) => { if (mounted) setError(requestError.message) })
+      .catch((requestError) => {
+        if (!mounted) return
+        setPipelineEmpty(Boolean(requestError.isPipelineNotReady))
+        setError(requestError.isPipelineNotReady ? '' : requestError.message)
+      })
       .finally(() => { if (mounted) setLoading(false) })
     return () => { mounted = false }
   }, [])
@@ -57,7 +63,7 @@ export default function GraphAnalytics() {
     setNodesLoading(true)
     getGraphNodes({ sort_by: 'suspicion_score', mule_only: true, page: 1, page_size: 100 })
       .then((data) => { if (mounted) setNodes(data || []) })
-      .catch((requestError) => { if (mounted) setError(requestError.message) })
+      .catch((requestError) => { if (mounted) setError(requestError.isPipelineNotReady ? '' : requestError.message) })
       .finally(() => { if (mounted) setNodesLoading(false) })
     return () => { mounted = false }
   }, [summary])
@@ -86,6 +92,7 @@ export default function GraphAnalytics() {
   return <div className="page graph-page">
     <div className="page-header"><div><span className="section-kicker">Network intelligence / suspicious entities</span><h2 className="page-heading">Graph analytics</h2><p className="page-subtitle">Trace high-risk transfer nodes, mule-account signals, and the transaction edges behind them.</p></div><label className="mule-toggle"><input type="checkbox" checked={mulesOnly} onChange={toggleMules} /><span className="toggle-track" /><span>Show mules only</span></label></div>
     {error && <div className="error-banner" role="alert"><span aria-hidden="true">!</span><div><strong>Graph data issue</strong><br />{error}</div></div>}
+    {pipelineEmpty && <PipelineEmpty what="graph" />}
     <section className="graph-stat-grid"><StatCard title="Total Nodes" value={Number(summary?.total_nodes || 0).toLocaleString('en-IN')} subtitle="Entities in transfer graph" icon="◈" /><StatCard title="Total Edges" value={Number(summary?.total_edges || 0).toLocaleString('en-IN')} subtitle="Directed transactions" color="var(--accent-blue)" icon="↗" /><StatCard title="Mule Accounts Detected" value={Number(summary?.known_mule_nodes || 0).toLocaleString('en-IN')} subtitle="Known or suspected" color="var(--accent-red)" icon="!" /></section>
     <section className="panel graph-chart-panel"><div className="panel-header"><div><span className="section-kicker">Top suspicious nodes</span><h3 className="section-heading">Node Risk Scatter — Size = Alert Count</h3></div><div className="graph-legend"><span><i className="legend-dot legend-mule" /> Mule Account</span><span><i className="legend-dot legend-regular" /> Regular Node</span></div></div><div className="graph-chart-wrap">{nodesLoading ? <div className="chart-loading"><LoadingSpinner /><span>Filtering node set…</span></div> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 18, right: 24, bottom: 22, left: 4 }}><CartesianGrid stroke="var(--border)" strokeDasharray="3 3" /><XAxis type="number" dataKey="ratio_plot" name="In/out ratio" domain={[0, 1000]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(value) => value === 1000 ? '1k+' : value} label={{ value: 'In / out ratio (capped)', position: 'insideBottom', fill: 'var(--text-muted)', fontSize: 10, offset: -12 }} /><YAxis type="number" dataKey="suspicion_score" name="Suspicion score" domain={[0, 1]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickLine={false} axisLine={false} /><ZAxis type="number" dataKey="alert_count" range={[40, 400]} name="Alert count" /><Tooltip cursor={{ strokeDasharray: '3 3', stroke: 'var(--accent-blue)' }} content={<GraphTooltip />} /><Scatter name="Regular Nodes" data={regularNodes} fill="var(--accent-blue)" shape={(props) => <circle cx={props.cx} cy={props.cy} r={Math.max(4, Math.min(20, 4 + Math.sqrt(Number(props.payload?.alert_count || 0)) * 1.8))} fill="var(--accent-blue)" fillOpacity="0.7" stroke="var(--accent-blue)" strokeWidth="1" />} /><Scatter name="Mule Accounts" data={muleNodes} fill="var(--accent-red)" shape={(props) => <circle cx={props.cx} cy={props.cy} r={Math.max(5, Math.min(20, 5 + Math.sqrt(Number(props.payload?.alert_count || 0)) * 1.8))} fill="var(--accent-red)" fillOpacity="0.8" stroke="#ffb4af" strokeWidth="1" />} /></ScatterChart></ResponsiveContainer>}</div></section>
     <section className="panel graph-table-panel"><div className="panel-header"><div><span className="section-kicker">Prioritized entities</span><h3 className="section-heading">Top Suspicious Nodes</h3></div><span className="panel-meta">{nodes.length} nodes shown</span></div>{nodes.length ? <div className="table-scroll"><table className="data-table graph-node-table"><thead><tr><th>Rank</th><th>Node ID</th><th>In-degree</th><th>Out-degree</th><th>In/Out Ratio</th><th>Suspicion Score</th><th>Alerts</th><th>PageRank</th><th>Mule?</th></tr></thead><tbody>{nodes.map((node, index) => <tr key={node.node_id} className="clickable-row" onClick={() => openNode(node)} onKeyDown={(event) => { if (event.key === 'Enter') openNode(node) }} tabIndex="0"><td className="mono">{index + 1}</td><td className="mono primary-cell">{node.node_id}</td><td className="numeric">{node.in_degree}</td><td className="numeric">{node.out_degree}</td><td className="numeric">{formatRatio(node.in_out_ratio)}</td><td className="numeric graph-suspicion">{Number(node.suspicion_score || 0).toFixed(4)}</td><td className="numeric">{node.alert_count}</td><td className="numeric">{Number(node.pagerank || 0).toFixed(5)}</td><td>{Number(node.is_mule_account) ? <span className="mule-badge">⚠ MULE</span> : <span className="text-muted">—</span>}</td></tr>)}</tbody></table></div> : <div className="empty-state"><span className="empty-state-icon">◈</span><h3 className="empty-state-title">No graph nodes returned</h3></div>}</section>

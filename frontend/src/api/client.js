@@ -23,8 +23,12 @@ async function request(promise) {
     const response = await promise
     return response.data
   } catch (error) {
+    const status = error?.response?.status
     const wrapped = new Error(getErrorMessage(error))
-    wrapped.status = error?.response?.status
+    wrapped.status = status
+    // 503 = pipeline not run yet (scored_transactions.csv missing)
+    // This is NOT a connection error — it is an expected "no data" state
+    wrapped.isPipelineNotReady = status === 503
     wrapped.cause = error
     throw wrapped
   }

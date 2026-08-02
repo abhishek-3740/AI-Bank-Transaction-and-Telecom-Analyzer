@@ -21,6 +21,8 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
+from csv_cache import load_csv_cached
+
 from .models import STRReport, STRTransaction
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -34,49 +36,40 @@ _SCORED_CSV = _OUT / "scored_transactions.csv"
 _GRAPH_CSV  = _OUT / "graph_analytics.csv"
 _GT_CSV     = _REPO / "data" / "ground_truth" / "anomaly_ground_truth.csv"
 
-_scored_df: Optional[pd.DataFrame] = None
-_graph_df:  Optional[pd.DataFrame] = None
-_gt_df:     Optional[pd.DataFrame] = None
-
-
-def _load_scored() -> pd.DataFrame:
-    global _scored_df
-    if _scored_df is not None:
-        return _scored_df
-    if not _SCORED_CSV.exists():
-        raise HTTPException(
-            status_code=503,
-            detail="Scored transactions not found. Run: python scripts/score.py",
-        )
-    df = pd.read_csv(_SCORED_CSV, dtype={"Sender_Customer_ID": str,
-                                          "Receiver_Account_Number": str,
-                                          "Transaction_ID": str})
+def _read_scored(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, dtype={"Sender_Customer_ID": str,
+                                  "Receiver_Account_Number": str,
+                                  "Transaction_ID": str})
     df["risk_score"] = df["risk_score"].fillna(0)
     df["rules_fired"] = df["rules_fired"].fillna("")
     for col in ("reason_1", "reason_2", "reason_3"):
         df[col] = df[col].fillna("")
-    _scored_df = df
     return df
 
 
+def _load_scored() -> pd.DataFrame:
+    if not _SCORED_CSV.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="No scored transactions yet. Upload a bank statement PDF via "
+                   "/api/v1/pdf/parse, or run: python scripts/score.py",
+        )
+    return load_csv_cached(_SCORED_CSV, _read_scored)
+
+
 def _load_graph() -> Optional[pd.DataFrame]:
-    global _graph_df
-    if _graph_df is not None:
-        return _graph_df
     if not _GRAPH_CSV.exists():
         return None
-    _graph_df = pd.read_csv(_GRAPH_CSV, dtype={"node_id": str}).fillna(0)
-    return _graph_df
+    return load_csv_cached(
+        _GRAPH_CSV, lambda p: pd.read_csv(p, dtype={"node_id": str}).fillna(0))
 
 
 def _load_gt() -> Optional[pd.DataFrame]:
-    global _gt_df
-    if _gt_df is not None:
-        return _gt_df
     if not _GT_CSV.exists():
         return None
-    _gt_df = pd.read_csv(_GT_CSV, dtype={"Customer_ID": str, "Transaction_ID": str})
-    return _gt_df
+    return load_csv_cached(
+        _GT_CSV,
+        lambda p: pd.read_csv(p, dtype={"Customer_ID": str, "Transaction_ID": str}))
 
 
 def _build_str_report(customer_id: str, min_risk: float,

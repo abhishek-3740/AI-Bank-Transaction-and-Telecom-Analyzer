@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
+from csv_cache import load_csv_cached
+
 from .models import (
     AlertListResponse,
     CustomerSummary,
@@ -42,34 +44,32 @@ _BUNDLE_PATH = _BACKEND_DIR / "models" / "stage7_setC.joblib"
 _SCRIPTS_DIR = _BACKEND_DIR / "scripts"
 
 # ---------------------------------------------------------------------------
-# Data loading (lazy, cached in module-level variable)
+# Data loading (lazy, re-read whenever the CSV changes on disk)
 # ---------------------------------------------------------------------------
-_scored_df: Optional[pd.DataFrame] = None
 
-
-def _load_scored() -> pd.DataFrame:
-    """Load the scored transactions CSV, raising a clear error if missing."""
-    global _scored_df
-    if _scored_df is not None:
-        return _scored_df
-    if not _SCORED_CSV.exists():
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Scored transactions file not found at {_SCORED_CSV}. "
-                "Run: python scripts/score.py"
-            ),
-        )
-    df = pd.read_csv(_SCORED_CSV, dtype={"Sender_Customer_ID": str,
-                                          "Receiver_Account_Number": str,
-                                          "Transaction_ID": str})
+def _read_scored(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, dtype={"Sender_Customer_ID": str,
+                                  "Receiver_Account_Number": str,
+                                  "Transaction_ID": str})
     df["risk_score"] = df["risk_score"].fillna(0)
     df["is_suspicious_gt"] = df["is_suspicious_gt"].fillna(0).astype(int)
     df["rules_fired"] = df["rules_fired"].fillna("")
     for col in ("reason_1", "reason_2", "reason_3"):
         df[col] = df[col].fillna("")
-    _scored_df = df
     return df
+
+
+def _load_scored() -> pd.DataFrame:
+    """Load the scored transactions CSV, raising a clear error if missing."""
+    if not _SCORED_CSV.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No scored transactions yet. Upload a bank statement PDF via "
+                "/api/v1/pdf/parse, or run: python scripts/score.py"
+            ),
+        )
+    return load_csv_cached(_SCORED_CSV, _read_scored)
 
 
 def _row_to_model(row: pd.Series) -> ScoredTransaction:
@@ -240,9 +240,6 @@ def score_single(request: ScoreRequest) -> ScoreResponse:
     (Set A) are computed. The returned probability will be lower than the full
     Set C score for the same transaction.
     """
-    import joblib
-    import xgboost as xgb
-
     if not _BUNDLE_PATH.exists():
         raise HTTPException(
             status_code=503,
@@ -252,19 +249,17 @@ def score_single(request: ScoreRequest) -> ScoreResponse:
         sys.path.insert(0, str(_SCRIPTS_DIR))
 
     try:
-        from features import build_features  # type: ignore[import]
-        import pandas as pd
+        from scoring_core import (  # type: ignore[import]
+            empty_cdr, empty_ipdr, load_bundle, score_frame,
+        )
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Feature module import failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Scoring module import failed: {e}")
 
-    bundle = joblib.load(_BUNDLE_PATH)
     txn = request.transaction
     tid = txn.get("Transaction_ID", "UNKNOWN")
 
-    # Build a minimal single-row bank DataFrame so build_features can run
     try:
         bank_df = pd.DataFrame([txn])
-        # Ensure required timestamp columns exist
         for col in ("Date", "Timestamp"):
             if col not in bank_df.columns:
                 raise HTTPException(status_code=422, detail=f"Missing field: {col}")
@@ -275,69 +270,12 @@ def score_single(request: ScoreRequest) -> ScoreResponse:
         bank_df = bank_df.sort_values("ts").reset_index(drop=True)
         bank_df["y"] = 0
 
-        # Empty CDR/IPDR for Set A only scoring
-        cdr_df = pd.DataFrame(columns=["CDR_ID", "Call_Date", "Call_Start_Time",
-                                        "A_Party_Number", "B_Party_Number",
-                                        "Call_Duration_Seconds", "IMSI", "IMEI",
-                                        "First_Cell_Global_ID", "Roaming_Network_Circle"])
-        cdr_df["ts"] = pd.Series(dtype="int64")
-        ipdr_df = pd.DataFrame(columns=["IPDR_ID", "Session_Date", "Session_Start_Time",
-                                         "Subscriber_MSISDN", "Subscriber_IMSI", "Device_IMEI",
-                                         "Source_IP_Address", "Destination_IP_Address",
-                                         "Destination_Port", "Cell_Global_ID",
-                                         "Session_Duration_Seconds"])
-        ipdr_df["ts"] = pd.Series(dtype="int64")
-
-        _b, SETS = build_features(bank_df, cdr_df, ipdr_df, verbose=False)
-        X = SETS["C"].replace([float("inf"), float("-inf")], float("nan"))
-        cols = bundle["columns"]
-        # Fill missing columns with 0 (CDR/IPDR features unavailable)
-        for c in cols:
-            if c not in X.columns:
-                X[c] = 0.0
-        X = X[cols].fillna(bundle["medians"]).fillna(0)
-
-        prob = bundle["model"].predict_proba(X)[:, 1][0]
-        thr = bundle["threshold"]
-        risk = float(
-            70 * prob / thr if prob < thr
-            else 70 + 30 * (prob - thr) / (1 - thr + 1e-12)
-        )
-        risk = min(max(round(risk, 1), 0), 100)
-
-        if risk >= 90:
-            band = "CRITICAL"
-        elif risk >= 70:
-            band = "HIGH"
-        elif risk >= 40:
-            band = "MEDIUM"
-        else:
-            band = "LOW"
-
-        # SHAP contributions for this row
-        contrib = bundle["model"].get_booster().predict(
-            xgb.DMatrix(X, feature_names=list(X.columns)), pred_contribs=True
-        )[:, :-1][0]
-        top3_idx = (-contrib).argsort()[:3]
-        reasons = [
-            f"{X.columns[j]} ({contrib[j]:+.2f})"
-            for j in top3_idx if contrib[j] > 0
-        ]
-
-        # Rule engine (bank-only signals)
-        fired_rules = []
-        row_x = X.iloc[0]
-        hour = int(row_x.get("transaction_hour", 12))
-        if 0 <= hour <= 5:
-            fired_rules.append("ODD_HOUR")
-        if row_x.get("amount_vs_customer_median", 0) > 5.0:
-            fired_rules.append("HIGH_AMOUNT_ANOMALY")
-        if row_x.get("txn_count_previous_10m", 0) >= 3:
-            fired_rules.append("RAPID_SUCCESSION")
-        if row_x.get("receiver_seen_before", 1) == 0:
-            fired_rules.append("NEW_BENEFICIARY_FLAG")
-        if row_x.get("calls_previous_30m", 0) >= 3:
-            fired_rules.append("TELECOM_BURST")
+        # Same code path as the batch scorer, so a single transaction scored here
+        # and the same transaction scored in a batch cannot disagree.
+        scored = score_frame(bank_df, empty_cdr(), empty_ipdr(),
+                             bundle=load_bundle(_BUNDLE_PATH), split="ondemand",
+                             verbose=False)
+        row = scored.iloc[0]
 
     except HTTPException:
         raise
@@ -346,9 +284,9 @@ def score_single(request: ScoreRequest) -> ScoreResponse:
 
     return ScoreResponse(
         Transaction_ID=tid,
-        ml_probability=round(float(prob), 4),
-        risk_score=risk,
-        risk_band=band,
-        reasons=reasons,
-        rules_fired=fired_rules,
+        ml_probability=round(float(row.ml_probability), 4),
+        risk_score=float(row.risk_score),
+        risk_band=str(row.risk_band),
+        reasons=[r for r in (row.reason_1, row.reason_2, row.reason_3) if r],
+        rules_fired=[r for r in str(row.rules_fired).split("|") if r],
     )

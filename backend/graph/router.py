@@ -19,6 +19,8 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
+from csv_cache import load_csv_cached
+
 from .models import GraphEdge, GraphNode, GraphSummary
 
 router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
@@ -29,38 +31,31 @@ _OUT       = _BACKEND / "notebook" / "output"
 _NODES_CSV = _OUT / "graph_analytics.csv"
 _EDGES_CSV = _OUT / "graph_edges.csv"
 
-_nodes_df: Optional[pd.DataFrame] = None
-_edges_df: Optional[pd.DataFrame] = None
-
-
 def _load_nodes() -> pd.DataFrame:
-    global _nodes_df
-    if _nodes_df is not None:
-        return _nodes_df
     if not _NODES_CSV.exists():
         raise HTTPException(
             status_code=503,
-            detail=f"Graph analytics file not found. Run: python scripts/graph_analytics.py",
+            detail="No graph analytics yet. Upload a bank statement PDF via "
+                   "/api/v1/pdf/parse, or run: python scripts/graph_analytics.py",
         )
-    df = pd.read_csv(_NODES_CSV, dtype={"node_id": str})
-    df = df.fillna(0)
-    _nodes_df = df
-    return df
+    return load_csv_cached(
+        _NODES_CSV,
+        lambda p: pd.read_csv(p, dtype={"node_id": str}).fillna(0),
+    )
 
 
 def _load_edges() -> pd.DataFrame:
-    global _edges_df
-    if _edges_df is not None:
-        return _edges_df
     if not _EDGES_CSV.exists():
         raise HTTPException(
             status_code=503,
-            detail=f"Graph edges file not found. Run: python scripts/graph_analytics.py",
+            detail="No graph edges yet. Upload a bank statement PDF via "
+                   "/api/v1/pdf/parse, or run: python scripts/graph_analytics.py",
         )
-    df = pd.read_csv(_EDGES_CSV, dtype={"src": str, "dst": str, "Transaction_ID": str})
-    df = df.fillna(0)
-    _edges_df = df
-    return df
+    return load_csv_cached(
+        _EDGES_CSV,
+        lambda p: pd.read_csv(p, dtype={"src": str, "dst": str,
+                                        "Transaction_ID": str}).fillna(0),
+    )
 
 
 def _row_to_node(row: pd.Series) -> GraphNode:

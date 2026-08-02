@@ -1,0 +1,42 @@
+/* Shown when the API answers 503 — scored data has not been produced yet. */
+.empty-state-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  background: rgba(88, 166, 255, 0.07);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+.empty-state-banner .empty-state-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.empty-state-banner strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--accent-blue);
+}
+.empty-state-banner p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.empty-state-banner a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.empty-state-banner code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}

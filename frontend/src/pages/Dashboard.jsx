@@ -4,6 +4,7 @@ import { Cell, Legend, Pie, PieChart, Bar, BarChart, CartesianGrid, ResponsiveCo
 import { getAlerts, getScoringStats } from '../api/client'
 import AlertsTable from '../components/AlertsTable'
 import LoadingSpinner from '../components/LoadingSpinner'
+import PipelineEmpty from '../components/PipelineEmpty'
 import StatCard from '../components/StatCard'
 import { formatCurrency, formatPercentage } from '../utils/formatters'
 import './Dashboard.css'
@@ -37,7 +38,7 @@ export default function Dashboard() {
         if (mounted) setStats(data)
       })
       .catch((requestError) => {
-        if (mounted) setError(requestError.message)
+        if (mounted && !requestError.isPipelineNotReady) setError(requestError.message)
       })
       .finally(() => {
         if (mounted) setStatsLoading(false)
@@ -53,7 +54,7 @@ export default function Dashboard() {
         if (mounted) setCriticalAlerts(data?.results || [])
       })
       .catch((requestError) => {
-        if (mounted) setError((current) => current || requestError.message)
+        if (mounted && !requestError.isPipelineNotReady) setError((current) => current || requestError.message)
       })
       .finally(() => {
         if (mounted) setAlertsLoading(false)
@@ -95,7 +96,9 @@ export default function Dashboard() {
         <div className="dashboard-refresh-note"><span className="refresh-mark">↻</span> Live API data</div>
       </div>
 
-      {error && <div className="error-banner" role="alert"><span aria-hidden="true">!</span><div><strong>Data connection issue</strong><br />{error}</div></div>}
+      {error && <div className="error-banner" role="alert"><span aria-hidden="true">!</span><div><strong>Connection issue</strong><br />{error}</div></div>}
+
+      {!error && !statsLoading && !stats && <PipelineEmpty what="data" />}
 
       <section className="dashboard-stat-grid" aria-label="Key metrics">
         {statsLoading ? (

@@ -13,6 +13,10 @@ class ParserResponse(BaseModel):
     rows: int
     columns: list[str]
     data: list[dict[str, Any]]
+    # What ingestion did with the parsed rows: how many landed in the upload
+    # corpus, whether the dashboard was rebuilt, and what had to be inferred.
+    # None when ingestion could not run — parsing still succeeded.
+    ingest: dict[str, Any] | None = None
 
 
 class ParserError(BaseModel):

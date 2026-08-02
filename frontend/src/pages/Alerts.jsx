@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAlerts } from '../api/client'
 import AlertsTable from '../components/AlertsTable'
+import PipelineEmpty from '../components/PipelineEmpty'
 import { PAGE_SIZES, RISK_BANDS, SPLITS, formatCurrency, formatDate, splitReasons } from '../utils/formatters'
 import RiskBadge from '../components/RiskBadge'
 import RulesBadge from '../components/RulesBadge'
@@ -15,12 +16,14 @@ export default function Alerts() {
   const [payload, setPayload] = useState({ total: 0, page: 1, page_size: 50, results: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [pipelineEmpty, setPipelineEmpty] = useState(false)
   const [sortDirection, setSortDirection] = useState('desc')
 
   const loadAlerts = useCallback(() => {
     let mounted = true
     setLoading(true)
     setError('')
+    setPipelineEmpty(false)
     getAlerts({
       min_risk: Number(appliedFilters.minRisk),
       band: appliedFilters.band || undefined,
@@ -37,7 +40,9 @@ export default function Alerts() {
         setPayload({ ...data, results, total: appliedFilters.rule ? results.length : Number(data.total || 0) })
       })
       .catch((requestError) => {
-        if (mounted) setError(requestError.message)
+        if (!mounted) return
+        setPipelineEmpty(Boolean(requestError.isPipelineNotReady))
+        setError(requestError.isPipelineNotReady ? '' : requestError.message)
       })
       .finally(() => {
         if (mounted) setLoading(false)
@@ -98,6 +103,8 @@ export default function Alerts() {
       </div>
 
       {error && <div className="error-banner" role="alert"><span aria-hidden="true">!</span><div><strong>Unable to load alerts</strong><br />{error}</div></div>}
+
+      {pipelineEmpty && <PipelineEmpty what="alerts" />}
 
       <form className="panel alerts-filter-panel" onSubmit={applyFilters}>
         <div className="alerts-filter-grid">

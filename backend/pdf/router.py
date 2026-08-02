@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from pdf_parser import parse_pdf
 
+from .ingest import detect_dataset_type, ingest
 from .logging_config import get_logger
 from .models import ParserResponse
 from .utils import delete_file, save_upload_file, validate_file_extension
@@ -16,6 +17,33 @@ from .utils import delete_file, save_upload_file, validate_file_extension
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/pdf", tags=["pdf"])
+
+
+def _bust_dashboard_caches() -> None:
+    """Reset the module-level dataframe caches in the scoring and graph routers.
+
+    Both routers lazily load CSVs into a global variable the first time a request
+    arrives. After an upload rewrites those CSVs we must clear the globals so the
+    next request reads the fresh file rather than the stale in-memory copy.
+    """
+    try:
+        import scoring.router as _sr
+        _sr._scored_df = None
+    except Exception:
+        pass
+    try:
+        import graph.router as _gr
+        _gr._nodes_df = None
+        _gr._edges_df = None
+    except Exception:
+        pass
+    try:
+        import reports.router as _rr
+        _rr._scored_df = None
+        _rr._graph_df  = None
+        _rr._gt_df     = None
+    except Exception:
+        pass
 
 
 def _reconstruct_transaction_amount(df: pd.DataFrame) -> pd.DataFrame:
@@ -108,7 +136,9 @@ def parse_pdf_endpoint(file: UploadFile = File(...)) -> ParserResponse:
             pdf_parser._validate_schema = lambda df, dtype: None
 
         try:
-            df = parse_pdf(str(temp_path))
+            # parse_pdf also writes a "<type>_parsed.csv"; keep it beside the
+            # upload instead of littering the process working directory.
+            df = parse_pdf(str(temp_path), output_dir=str(temp_path.parent))
         finally:
             if original_validate:
                 pdf_parser._validate_schema = original_validate
@@ -116,17 +146,7 @@ def parse_pdf_endpoint(file: UploadFile = File(...)) -> ParserResponse:
         # Fallback: reconstruct Transaction_Amount for split DR/CR bank statements
         df = _reconstruct_transaction_amount(df)
 
-        # Determine dataset type from parser metadata if available,
-        # otherwise infer from columns.
-        dataset_type = "auto"
-        if hasattr(df, "attrs") and "dataset_type" in df.attrs:
-            dataset_type = df.attrs["dataset_type"]
-        elif "Transaction_Amount" in df.columns and "Balance(INR)" in df.columns:
-            dataset_type = "BANK"
-        elif "Call_Date" in df.columns:
-            dataset_type = "CDR"
-        elif "Session_Start_Time" in df.columns:
-            dataset_type = "IPDR"
+        dataset_type = detect_dataset_type(df)
 
         # Run our own validation after reconstruction
         _validate_dataframe(df, dataset_type)
@@ -137,15 +157,28 @@ def parse_pdf_endpoint(file: UploadFile = File(...)) -> ParserResponse:
 
         logger.info(
             f"Successfully parsed PDF {file.filename}: "
-            f"{rows} rows, {len(columns)} columns"
+            f"{rows} rows, {len(columns)} columns, type={dataset_type}"
         )
+
+        # Feed the investigation pipeline. A failure here must not discard a
+        # successful parse — the caller still gets its rows, plus the reason.
+        try:
+            ingest_summary = ingest(df, dataset_type)
+            # Bust the in-memory caches in the scoring and graph routers so the
+            # dashboard reflects the freshly scored data without a server restart.
+            _bust_dashboard_caches()
+        except Exception as exc:
+            logger.error(f"Ingestion failed for {file.filename}: {exc}")
+            logger.error(traceback.format_exc())
+            ingest_summary = {"dashboard_updated": False, "reason": str(exc)}
 
         return ParserResponse(
             status="success",
-            dataset_type="auto",
+            dataset_type=dataset_type,
             rows=rows,
             columns=columns,
             data=data,
+            ingest=ingest_summary,
         )
 
     except HTTPException:
